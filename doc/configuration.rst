@@ -399,16 +399,22 @@ Automatic DNSSEC signing
 Knot DNS supports automatic DNSSEC signing of zones. The signing
 can operate in two modes:
 
-1. :ref:`Automatic key management <dnssec-automatic-zsk-management>`.
+1. :ref:`Manual key management <dnssec-manual-key-management>`.
+   In this mode, the server maintains zone signatures (RRSIGs) only. The
+   signatures are kept up-to-date and signing keys are rolled according to
+   timing parameters assigned to the keys. The keys must be generated and
+   timing parameters must be assigned by the zone operator.
+
+2. :ref:`Automatic key management <dnssec-automatic-zsk-management>`.
    In this mode, the server maintains signing keys. New keys are generated
    according to assigned policy and are rolled automatically in a safe manner.
    No zone operator intervention is necessary.
 
-2. :ref:`Manual key management <dnssec-manual-key-management>`.
-   In this mode, the server maintains zone signatures only. The signatures
-   are kept up-to-date and signing keys are rolled according to timing
-   parameters assigned to the keys. The keys must be generated and timing
-   parameters must be assigned by the zone operator.
+For automatic DNSSEC signing, :ref:`policy<Policy section>` has to
+be configured and assigned to the zone. The policy specifies how the zone
+is signed (i.e. signing algorithm, key size, key lifetime, signature lifetime,
+etc.). If no policy is specified or the ``default`` one is assigned, the
+default signing parameters are used.
 
 The DNSSEC signing process maintains some metadata which is stored in the
 :abbr:`KASP (Key And Signature Policy)` database. This database is backed
@@ -421,92 +427,13 @@ by LMDB.
   the database also contains private key material – don't set the permissions
   too weak.
 
-.. _dnssec-automatic-zsk-management:
-
-Automatic ZSK management
-------------------------
-
-For automatic ZSK management a signing :ref:`policy<Policy section>` has to
-be configured and assigned to the zone. The policy specifies how the zone
-is signed (i.e. signing algorithm, key size, key lifetime, signature lifetime,
-etc.). If no policy is specified or the ``default`` one is assigned, the
-default signing parameters are used.
-
-A minimal zone configuration may look as follows::
-
-  zone:
-    - domain: myzone.test
-      dnssec-signing: on
-
-With a custom signing policy, the policy section will be added::
-
-  policy:
-    - id: custom_policy
-      signing-threads: 4
-      algorithm: ECDSAP256SHA256
-      zsk-lifetime: 60d
-
-  zone:
-    - domain: myzone.test
-      dnssec-signing: on
-      dnssec-policy: custom_policy
-
-After configuring the server, reload the changes:
-
-.. code-block:: console
-
-  $ knotc reload
-
-The server will generate initial signing keys and sign the zone properly. Check
-the server logs to see whether everything went well.
-
-.. _dnssec-automatic-ksk-management:
-
-Automatic KSK management
-------------------------
-
-For automatic KSK management, first configure ZSK management like above, and use
-additional options in :ref:`policy section <Policy section>`, mostly specifying
-desired (finite) lifetime for KSK: ::
-
-  remote:
-    - id: parent_zone_server
-      address: 192.168.12.1@53
-
-  submission:
-    - id: parent_zone_sbm
-      parent: [parent_zone_server]
-
-  policy:
-    - id: custom_policy
-      signing-threads: 4
-      algorithm: ECDSAP256SHA256
-      zsk-lifetime: 60d
-      ksk-lifetime: 365d
-      ksk-submission: parent_zone_sbm
-
-  zone:
-    - domain: myzone.test
-      dnssec-signing: on
-      dnssec-policy: custom_policy
-
-After the initially-generated KSK reaches its lifetime, new KSK is published and after
-convenience delay the submission is started. The server publishes CDS and CDNSKEY records
-and the user shall propagate them to the parent. The server periodically checks for
-DS at the parent zone and when positive, finishes the rollover.
-
-.. NOTE::
-   As the key timestamp semantics differ between the automatic and manual key
-   management, all key timestamps set in the future, either manually or during
-   a key import, are ignorred (cleared).
-
 .. _dnssec-manual-key-management:
 
 Manual key management
 ---------------------
 
-For automatic DNSSEC signing with manual key management, a signing policy
-with manual key management flag has to be set::
+For automatic DNSSEC signing with manual key management, the
+:ref:`policy_manual` flag has to be set in the policy::
 
   policy:
     - id: manual
@@ -546,6 +473,86 @@ will be added into the zone). Remember to update the DS record in the
 parent zone to include a reference to the new key. This must happen within one
 day (in this case) including a delay required to propagate the new DS to
 caches.
+
+.. _dnssec-automatic-zsk-management:
+
+Automatic ZSK management
+------------------------
+
+With :ref:`policy_manual` set to ``off`` in the assigned policy (which is the
+default), the DNSSEC keys are generated automatically (if not already existing)
+and also automatically rolled over according to their configured lifetimes.
+The default :ref:`policy_zsk-lifetime` is finite whereas :ref:`policy_ksk-lifetime`
+infinite, meaning no KSK roll-overs take place in the following example: ::
+
+  policy:
+    - id: custom_policy
+      signing-threads: 4
+      algorithm: ECDSAP256SHA256
+      zsk-lifetime: 60d
+
+  zone:
+    - domain: myzone.test
+      dnssec-signing: on
+      dnssec-policy: custom_policy
+
+After configuring the server, reload the changes:
+
+.. code-block:: console
+
+  $ knotc reload
+
+Check the server logs (regularly) to see whether everything went well.
+
+.. NOTE::
+   Enabling automatic key management with already existing keys demands attention:
+    - Any key timers set at future timestamps are automatically cleared,
+      which prevents their interference with the automatic operation procedures.
+    - If the keys are in an inconsistent state (e.g. unexpected number of keys
+      or unexpected number of active keys) might lead to undefined behaviors
+      or at least a halt of key management.
+
+.. _dnssec-automatic-ksk-management:
+
+Automatic KSK management
+------------------------
+
+For automatic KSK management, first configure ZSK management like above, and use
+:ref:`submission section <Submission section>` and several options in
+:ref:`policy section <Policy section>`, specifying desired (finite) lifetime for
+KSK and semi-automatic DS submission (see also :ref:`DNSSEC Key states` and
+:ref:`DNSSEC Key rollovers`) : ::
+
+  remote:
+    - id: parent_zone_server
+      address: 192.168.12.1@53
+
+  submission:
+    - id: parent_zone_sbm
+      parent: [parent_zone_server]
+
+  policy:
+    - id: custom_policy
+      signing-threads: 4
+      algorithm: ECDSAP256SHA256
+      zsk-lifetime: 60d
+      ksk-lifetime: 365d
+      ksk-submission: parent_zone_sbm
+
+  zone:
+    - domain: myzone.test
+      dnssec-signing: on
+      dnssec-policy: custom_policy
+
+After the initially-generated KSK reaches its lifetime, new KSK is published and after
+convenience delay the submission is started. The server publishes CDS and CDNSKEY records
+and the user shall propagate them to the parent. The server periodically checks for
+DS at the parent zone and when positive, finishes the rollover.
+
+.. NOTE::
+   When the initial keys are automatically generated for the first time, the KSK
+   is actually in this ``ready`` state, so that the initial parent DS submission
+   can take place automatically.
 
 .. _dnssec-signing:
 
