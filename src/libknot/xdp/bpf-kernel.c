@@ -69,6 +69,7 @@ int xdp_redirect_dns_func(struct xdp_md *ctx)
 
 	/* Check if the filter is disabled. */
 	if (!(opts.flags & KNOT_XDP_FILTER_ON)) {
+		// 若没有设置 filter，则交给内核处理
 		return XDP_PASS;
 	}
 
