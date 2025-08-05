@@ -15,7 +15,7 @@
  */
 
 #pragma once
-
+#include "config.h"
 #ifdef ENABLE_XDP
 
 #include "knot/query/layer.h"
