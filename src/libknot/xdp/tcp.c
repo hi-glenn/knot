@@ -350,6 +350,7 @@ int knot_tcp_recv(knot_tcp_relay_t *relay, knot_xdp_msg_t *msg,
 			knot_tcp_table_t *add_table = tcp_table;
 			if (syn_table != NULL) {
 				if (synack) {
+					// no exec
 					break; // creating conn based on SYN+ACK is only for kxdpgun, disallow in knotd
 				}
 				add_table = syn_table;
@@ -362,6 +363,7 @@ int knot_tcp_recv(knot_tcp_relay_t *relay, knot_xdp_msg_t *msg,
 			if (ret == KNOT_EOK) {
 				relay->action = synack ? XDP_TCP_ESTABLISH : XDP_TCP_SYN;
 				if (!(ignore & XDP_TCP_IGNORE_ESTABLISH)) {
+					// --- exec; 回复 syn + ack
 					relay->auto_answer = synack ? KNOT_XDP_MSG_ACK : (KNOT_XDP_MSG_SYN | KNOT_XDP_MSG_ACK);
 				}
 
@@ -371,6 +373,7 @@ int knot_tcp_recv(knot_tcp_relay_t *relay, knot_xdp_msg_t *msg,
 				conn->window_scale = msg->win_scale;
 				conn_update(conn, msg);
 				if (!synack) {
+					// --- exec
 					conn->acked = dnssec_random_uint32_t();
 					conn->ackno = conn->acked;
 				}

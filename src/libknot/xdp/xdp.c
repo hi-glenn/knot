@@ -451,6 +451,7 @@ int knot_xdp_send(knot_xdp_socket_t *socket, const knot_xdp_msg_t msgs[],
 		if (empty_msg(msg)) {
 			free_unsent(socket, msg);
 		} else {
+			// --- exec
 			size_t hdr_len = prot_write_hdrs_len(msg);
 			size_t tot_len = hdr_len + msg->payload.iov_len;
 			uint8_t *msg_beg = msg->payload.iov_base - hdr_len;
